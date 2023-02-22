@@ -30,12 +30,17 @@ unet = pipeline.unet
 pretrained_dict = unet.state_dict()
 model_dict = model.state_dict()
 i = 0
+# prefixes = ["up_blocks.2","up_blocks.5","down_blocks.0","down_blocks.2","down_blocks.5"
+#           "mid_block","conv_norm_out","conv_out","conv_in","time_embedding"]
+# error=["up_blocks.2.resnets.2.norm1.weight","up_blocks.2.resnets.2.norm1.bias","up_blocks.2.resnets.2.conv1.weight",
+#        "up_blocks.2.resnets.2.conv_shortcut.weight","up_blocks.5.resnets.0.norm1.weight","up_blocks.5.resnets.0.norm1.bias",
+#        "up_blocks.5.resnets.0.conv1.weight","up_blocks.5.resnets.0.conv_shortcut.weight","conv_in.weight",
+#        "conv_in.bias","conv_out.weight","conv_out.bias"]
 prefixes = ["up_blocks.2","up_blocks.5","down_blocks.0","down_blocks.2","down_blocks.5"
-          "mid_block","conv_norm_out","conv_out","conv_in","time_embedding"]
+          ]
 error=["up_blocks.2.resnets.2.norm1.weight","up_blocks.2.resnets.2.norm1.bias","up_blocks.2.resnets.2.conv1.weight",
        "up_blocks.2.resnets.2.conv_shortcut.weight","up_blocks.5.resnets.0.norm1.weight","up_blocks.5.resnets.0.norm1.bias",
-       "up_blocks.5.resnets.0.conv1.weight","up_blocks.5.resnets.0.conv_shortcut.weight","conv_in.weight",
-       "conv_in.bias","conv_out.weight","conv_out.bias"]
+       "up_blocks.5.resnets.0.conv1.weight","up_blocks.5.resnets.0.conv_shortcut.weight"]
 for name ,para in pretrained_dict.items():
     for j,prefix in enumerate(prefixes):
         if name.startswith(prefix):

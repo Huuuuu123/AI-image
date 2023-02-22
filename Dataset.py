@@ -7,12 +7,13 @@ from crop_face import crop_face
 
 
 class CustomDataset(Dataset):
-    def __init__(self, data_dir, size=256):
+    def __init__(self, data_dir, size=256,have_label=False):
         self.data_dir = data_dir
         self.file_list = os.listdir(data_dir)
         self.file_list = [f for f in self.file_list if f.endswith('.jpg')]
         self.file_list = sorted(self.file_list)
         self.crop_face = crop_face
+        self.have_label = have_label
         self.transforms = transforms.Compose(
             [
                 transforms.RandomHorizontalFlip(p=0.5),  # 随机水平翻转，概率为 0.5
@@ -36,12 +37,13 @@ class CustomDataset(Dataset):
         example["images"] = image
         
         # Load label
-        label_path = os.path.join(self.data_dir, self.file_list[idx][:-4] + '.txt')
-        with open(label_path, 'r') as f:
-            label = f.read()
-        
-        # Convert label to tensor
-        example["tags"] = label
+        if self.have_label :
+            label_path = os.path.join(self.data_dir, self.file_list[idx][:-4] + '.txt')
+            with open(label_path, 'r') as f:
+                label = f.read()
+
+            # Convert label to tensor
+            example["tags"] = label
         
         return example
 
