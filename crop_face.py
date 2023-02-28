@@ -152,7 +152,17 @@ def crop_face_test(image):
 
 #
 if __name__ == "__main__":
-    img = Image.open("data_0000/5867276.jpg")
-    print(np.array(img))
+    import os
+    data_dir="./imgs"
+    file_list = os.listdir(data_dir)
+    
+    file_list = [f for f in file_list if f.endswith('.jpg')]
+    idx = 0
+    for i in file_list:
+        
+        img = Image.open("./imgs/"+i)
+        img = crop_face(img)
+        img.save(f"./crop_face/photo${idx}.png")
+        idx +=1
 
 

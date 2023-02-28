@@ -7,15 +7,18 @@ from crop_face import crop_face
 
 
 class CustomDataset(Dataset):
-    def __init__(self, data_dir, size=256,have_label=False):
+    def __init__(self, data_dir, instance_prompt,tokenizer,size=256,have_label=False):
         self.data_dir = data_dir
         self.file_list = os.listdir(data_dir)
         self.file_list = [f for f in self.file_list if f.endswith('.jpg')]
         self.file_list = sorted(self.file_list)
         self.crop_face = crop_face
+        self.tokenizer = tokenizer
+        self.instance_prompt = instance_prompt
         self.have_label = have_label
         self.transforms = transforms.Compose(
             [
+                transforms.Resize((size, size)),
                 transforms.RandomHorizontalFlip(p=0.5),  # 随机水平翻转，概率为 0.5
                 transforms.RandomRotation(degrees=15),
                 transforms.ToTensor(),  # 0~1
@@ -31,11 +34,20 @@ class CustomDataset(Dataset):
         
         # Load image
         image_path = os.path.join(self.data_dir, self.file_list[idx])
-        image = Image.open(image_path)
-        image = self.crop_face(image)
+        try :
+            image = Image.open(image_path)
+        except :
+            image = Image.open("./imgs/hat2.jpg")
+        # image = self.crop_face(image)
+        image = image.convert("RGB")
         image = self.transforms(image)
         example["images"] = image
-        
+        example["instance_prompt_ids"] = self.tokenizer(
+            self.instance_prompt,
+            padding="do_not_pad",
+            truncation=True,
+            max_length=self.tokenizer.model_max_length,
+        ).input_ids
         # Load label
         if self.have_label :
             label_path = os.path.join(self.data_dir, self.file_list[idx][:-4] + '.txt')

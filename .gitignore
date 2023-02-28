@@ -6,3 +6,5 @@
 modelv1.pth
 /output
 /imgs
+/crop_face
+/stable-diffusion-v1-5

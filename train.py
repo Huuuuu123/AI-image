@@ -165,19 +165,20 @@ def train (img_folder = None):
             #     torch.save(model.state_dict(), "model"+f'step_{step + 1}'+".pth")
                 # image_pipe.save_pretrained(model_save_name + f'step_{step + 1}')
             # sample loop
-        x = torch.randn(1, 4, 32, 32).to(device)  # Batch of 8
-        for i, t in tqdm(enumerate(sampling_scheduler.timesteps)):
-            model_input = sampling_scheduler.scale_model_input(x, t)
-            with torch.no_grad():
+        with torch.no_grad():
+            x = torch.randn(1, 4, 32, 32).to(device)  # Batch of 8
+            for i, t in tqdm(enumerate(sampling_scheduler.timesteps)):
+                model_input = sampling_scheduler.scale_model_input(x, t)
+              
                 noise_pred = unet(x, t, encoder_hidden_states)[0]
-            x = sampling_scheduler.step(noise_pred, t, x).prev_sample
-        decoded_images = pipe.vae.decode(x / 0.18215).sample
-        grid = torchvision.utils.make_grid(decoded_images, nrow=4)
-        im = grid.permute(1, 2, 0).cpu().clip(-1, 1) * 0.5 + 0.5
-        im = Image.fromarray(np.array(im * 255).astype(np.uint8))
-        wandb.log({'Sample generations': wandb.Image(im)})
-        # save model
-        torch.save(unet.state_dict(), "new_model"+f'epoch_{epoch + 1}'+".pth")
+                x = sampling_scheduler.step(noise_pred, t, x).prev_sample
+            decoded_images = pipe.vae.decode(x / 0.18215).sample
+            grid = torchvision.utils.make_grid(decoded_images, nrow=4)
+            im = grid.permute(1, 2, 0).cpu().clip(-1, 1) * 0.5 + 0.5
+            im = Image.fromarray(np.array(im * 255).astype(np.uint8))
+            wandb.log({'Sample generations': wandb.Image(im)})
+            # save model
+            torch.save(unet.state_dict(), "new_model"+f'epoch_{epoch + 1}'+".pth")
     
     fig, axs = plt.subplots(1, 2, figsize=(12, 4))
     axs[0].plot(losses)
@@ -185,5 +186,25 @@ def train (img_folder = None):
     plt.show()
     
     torch.save(unet.state_dict(), "modelv2.pth")
+    pipeline = StableDiffusionPipeline(
+        text_encoder=text_encoder,
+        vae=vae,
+        unet=unet,
+        tokenizer=tokenizer,
+        scheduler=scheduler,
+
+    )
+    pipeline.save_pretrained("./pipeline")
+    model_name = f"ai-image"
+    # Code to upload a pipeline saved locally to the hub
+    from huggingface_hub import HFUploadApi
+
+    api = HFUploadApi(api_token="YOUR_API_TOKEN")
+    api.upload_new_version(
+        model_id="ai-image",
+        file_path="./pipeline",
+        release_notes="RELEASE_NOTES",
+        model_version="0"
+    )
 if __name__ == "__main__":
     train()

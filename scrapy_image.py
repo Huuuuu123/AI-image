@@ -55,7 +55,7 @@ def getStartHtml(url, key, first, loadNum, sfx):
 
 
 if __name__ == '__main__':
-    name = "极简头像"  # 图片关键词
+    name = "二次元图片"  # 图片关键词
     path = './imgs/hat'  # 图片保存路径
     countNum = 2000  # 爬取数量
     key = urllib.parse.quote(name)

@@ -1,8 +1,8 @@
 from clip_loss import clip_loss
 from Dataset import CustomDataset
 from torch.utils.data import Dataset, DataLoader
-from diffusers import DDPMScheduler, StableDiffusionPipeline, DDIMScheduler
-from diffusers import UNet2DModel
+from diffusers import DDPMScheduler, StableDiffusionPipeline, DDIMScheduler,PNDMScheduler
+from diffusers import UNet2DModel,DiffusionPipeline
 import torch.nn.functional as F
 import torch
 from matplotlib import pyplot as plt
@@ -21,25 +21,26 @@ from datasets import load_dataset
 def train(img_folder=None):
     wandb.init(project="AI-image", config=locals())
     #
-    guidance_scale = 0.1
+    # guidance_scale = 0.1
     n_cuts = 4
     device = "cuda"
-    model_id = "stabilityai/stable-diffusion-2-1-base"
-    pipe = StableDiffusionPipeline.from_pretrained(model_id).to(device)
-    batch_size = 2
+    # model_id = "mrm8488/ddpm-ema-anime-256"
+    # pipe = DiffusionPipeline.from_pretrained(model_id).to(device)
+    batch_size = 4
     lr = 1e-4
     grad_accumulation_steps = 2
     save_model_every = 5  # epoch
     # img_folder = "./imgs"
     # model
     model = UNet2DModel(
-        sample_size=32,  # the target image resolution
-        in_channels=4,  # the number of input channels, 3 for RGB images
-        out_channels=4,  # the number of output channels
+        sample_size=64,  # the target image resolution
+        in_channels=3 , # the number of input channels, 3 for RGB images
+        out_channels=3,  # the number of output channels
         layers_per_block=2,  # how many ResNet layers to use per UNet block
-        block_out_channels=(128, 256, 512),  # More channels -> more parameters
+        block_out_channels=(64,64,128, 256, 512),  # More channels -> more parameters
         down_block_types=(
-            
+            "DownBlock2D",
+            "DownBlock2D",
             "DownBlock2D",
             "AttnDownBlock2D",  # a ResNet downsampling block with spatial self-attention
             "AttnDownBlock2D",
@@ -47,15 +48,18 @@ def train(img_folder=None):
         up_block_types=(
             "AttnUpBlock2D",
             "AttnUpBlock2D",  # a ResNet upsampling block with spatial self-attention
-            
-            "UpBlock2D",  # a regular ResNet upsampling block
+            "UpBlock2D",
+            "UpBlock2D",
+            "UpBlock2D",# a regular ResNet upsampling block
         ),
     )
-    model.load_state_dict(torch.load("./modelepoch_38.pth"))
+    # model.load_state_dict(torch.load("./modelepoch_38.pth"))
     model.to("cuda")
+    # pipe.to("cuda")
     # Set the noise scheduler
     transform_1 = transforms.Compose(
         [
+            transforms.Resize((64, 64)),
             transforms.RandomHorizontalFlip(p=0.5),  # 随机水平翻转，概率为 0.5
             transforms.RandomRotation(degrees=15),
             transforms.ToTensor(),  # 0~1
@@ -73,11 +77,11 @@ def train(img_folder=None):
         datasets.set_transform(transform_data)
     
     else:
-        datasets = CustomDataset(img_folder)
+        datasets = CustomDataset(img_folder,size=64)
     
     train_dataloader = DataLoader(datasets, batch_size=batch_size, shuffle=True)
     
-    noise_scheduler = pipe.scheduler
+    noise_scheduler = PNDMScheduler.from_config("./scheduler_config.json")
     sampling_scheduler = DDIMScheduler.from_config(noise_scheduler.config)
     sampling_scheduler.set_timesteps(num_inference_steps=50)
     # Training loop
@@ -89,20 +93,20 @@ def train(img_folder=None):
     for epoch in range(100):
         for step, batch in tqdm(enumerate(train_dataloader), total=len(train_dataloader) / batch_size):
             clean_images = batch["images"].to(device)
-            with torch.no_grad():
-                latents = 0.18215 * pipe.vae.encode(clean_images).latent_dist.mean
-            # Sample noise to add to the images
-            latents.to(device)
-            noise = torch.randn(latents.shape).to(latents.device)
-            bs = latents.shape[0]
+            # with torch.no_grad():
+            #     latents = 0.18215 * pipe.vae.encode(clean_images).latent_dist.mean
+            # # Sample noise to add to the images
+            # latents.to(device)
+            noise = torch.randn(clean_images.shape).to(clean_images.device)
+            bs = clean_images.shape[0]
             
             # Sample a random timestep for each image
             timesteps = torch.randint(
-                0, noise_scheduler.num_train_timesteps, (bs,), device=latents.device
+                0, noise_scheduler.num_train_timesteps, (bs,), device=clean_images.device
             ).long()
             
             # Add noise to the clean images according to the noise magnitude at each timestep
-            noisy_images = noise_scheduler.add_noise(latents, noise, timesteps).to(device)
+            noisy_images = noise_scheduler.add_noise(clean_images, noise, timesteps).to(device)
             
             # Get the model prediction
             noise_pred = model(noisy_images, timesteps, return_dict=False)[0]
@@ -121,7 +125,6 @@ def train(img_folder=None):
             loss = F.mse_loss(noise_pred, noise)
             loss.backward(loss)
             losses.append(loss.item())
-            wandb.log({"loss": loss})
             # Update the model parameters with the optimizer
             if (step + 1) % grad_accumulation_steps == 0:
                 optimizer.step()
@@ -143,21 +146,24 @@ def train(img_folder=None):
             #     torch.save(model.state_dict(), "model"+f'step_{step + 1}'+".pth")
             # image_pipe.save_pretrained(model_save_name + f'step_{step + 1}')
             # sample loop
-        x = torch.randn(2, 4, 32, 32).to(device)  # Batch of 8
+        x = torch.randn(2, 3, 64, 64).to(device)  # Batch of 8
         for i, t in tqdm(enumerate(sampling_scheduler.timesteps)):
             model_input = sampling_scheduler.scale_model_input(x, t)
             with torch.no_grad():
                 noise_pred = model(model_input, t)["sample"]
             x = sampling_scheduler.step(noise_pred, t, x).prev_sample
-            decoded_images = pipe.vae.decode(x / 0.18215).sample
-        grid = torchvision.utils.make_grid(decoded_images, nrow=4)
+            # decoded_images = pipe.vae.decode(x / 0.18215).sample
+        grid = torchvision.utils.make_grid(x, nrow=2)
         im = grid.permute(1, 2, 0).cpu().clip(-1, 1) * 0.5 + 0.5
         im = Image.fromarray(np.array(im * 255).astype(np.uint8))
         wandb.log({'Sample generations': wandb.Image(im)})
 
         # save model
-        torch.save(model.state_dict(), "model" + f'epoch_{epoch + 1}' + ".pth")
-    
+        if (epoch + 1) % 5 ==0:
+            torch.save(model.state_dict(), "model" + f'epoch_{epoch + 1}' + ".pth")
+        loss_last_epoch = sum(losses[-len(train_dataloader):]) / len(train_dataloader)
+        wandb.log({"loss": np.log(loss_last_epoch)})
+        print(f"Epoch:{epoch + 1}, loss: {np.log(loss_last_epoch)}")
     fig, axs = plt.subplots(1, 2, figsize=(12, 4))
     axs[0].plot(losses)
     axs[1].plot(np.log(losses))
@@ -167,4 +173,4 @@ def train(img_folder=None):
 
 
 if __name__ == "__main__":
-    train()
+    train(img_folder = "./imgs")
